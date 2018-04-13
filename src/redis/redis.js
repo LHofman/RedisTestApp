@@ -11,13 +11,10 @@ function throwError(err, reply) {
     if (err) {
         console.log(err);
     }
-    console.log(reply);
 }
 
-module.exports.callLuaScript = function() {
-    client.eval(fs.readFileSync('src/redis/testFile.lua'), 1, 'test', 'testValue', (err, res) => {
-        console.log(err);
-    });
+module.exports.ttl = function(key) {
+    return client.ttl(key);
 }
 
 module.exports.runScript = function (script, nrOfKeys, ...args) {

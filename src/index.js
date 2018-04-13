@@ -20,6 +20,7 @@ const event = {
     'start': startTime,
     'end': endTime
 }
+// console.log(redis.ttl('4ln5p1mg4t32icgrrphbodi1ho@group.calendar.google.com:Thu Mar 01 2018'));
 // redis.getAllKeys().then(keys => console.log('keys: ' + keys));
 // redis.getValue('myKey1').then(console.log);
 // redis.clearKeys();

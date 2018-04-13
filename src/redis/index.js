@@ -31,9 +31,13 @@ module.exports.getList = function(key) {
 	});
 }
 
+module.exports.ttl = function(key) {
+	return redis.ttl(key);
+}
+
 module.exports.storeList = function(key, list) {
 	// return redis.setListEx(key, getNonEmptyList(list));
-	return redis.runScript('src/redis/setListEx.lua', 2, key, 120, ...getNonEmptyList(list));
+	return redis.runScript('src/redis/setListEx.lua', 2, key, 60, ...getNonEmptyList(list));
 }
 
 module.exports.storeEvents = function(events) {
