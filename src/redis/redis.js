@@ -1,5 +1,6 @@
 const redis = require('redis');
 const client = redis.createClient();
+const fs = require('fs');
 const DEFAULT_EXPIRATION = 120;
 
 client.on('connect', function () {
@@ -10,6 +11,17 @@ function throwError(err, reply) {
     if (err) {
         console.log(err);
     }
+    console.log(reply);
+}
+
+module.exports.callLuaScript = function() {
+    client.eval(fs.readFileSync('src/redis/testFile.lua'), 1, 'test', 'testValue', (err, res) => {
+        console.log(err);
+    });
+}
+
+module.exports.runScript = function (script, nrOfKeys, ...args) {
+    return client.eval(fs.readFileSync(script), nrOfKeys, ...args, throwError);
 }
 
 module.exports.set = function (key, value) {
@@ -21,18 +33,11 @@ module.exports.setEx = function (key, value, expiration = DEFAULT_EXPIRATION) {
     client.setex(key, expiration, value, throwError);
 }
 module.exports.setList = function (key, values) {
-    return new Promise(resolve => {
-        const promises = [];
-        for (const value of values)
-            promises.push(client.rpush(key, value, throwError));
-        Promise.all(promises).then(resolve);
-    })
+    client.rpush(key, values, throwError);
 }
 module.exports.setListEx = function (key, values, expiration = DEFAULT_EXPIRATION) {
-    return new Promise(resolve => {
-        this.setList(key, values).then(client.expire(key, expiration)).then(resolve);
-    });
-
+    this.setList(key, values);
+    client.expire(key, expiration);
 }
 module.exports.setObject = function (key, values) {
     client.hmset(key, values, throwError);

@@ -1,7 +1,7 @@
 const express = require('express');
 const redis = require('./redis');
 const google = require('./providers/google');
-const { formatDate } = require('./util');
+const { getStartOfDate } = require('./util');
 
 const calendarID = '4ln5p1mg4t32icgrrphbodi1ho@group.calendar.google.com';
 // 4ln5p1mg4t32icgrrphbodi1ho@group.calendar.google.com
@@ -20,14 +20,17 @@ const event = {
     'start': startTime,
     'end': endTime
 }
-
 // redis.getAllKeys().then(keys => console.log('keys: ' + keys));
+// redis.getValue('myKey1').then(console.log);
 // redis.clearKeys();
+// redis.getList('4ln5p1mg4t32icgrrphbodi1ho@group.calendar.google.com:Thu Mar 01 2018').then(console.log);
 // getCalendars().then(console.log);
 // createMultipleEvents(calendarID, summary, startTime, endTime, 1).then(events => displayEvents([events]));
 getEventsBetweenDates([calendarID], startDate, endDate).then(displayEventsShort).catch(console.error);
 // deleteEvent(calendarID, eventID);
 // updateEvent(calendarID, event); //doesn't work
+// redis.callLuaScript();
+// getEventsFromAPI(calendarID, startDate, endDate);
 
 function getEventsBetweenDates(calendars, startDate, endDate = startDate) {
     return new Promise((resolve, reject) => {
@@ -38,62 +41,67 @@ function getEventsBetweenDates(calendars, startDate, endDate = startDate) {
             dates.push(new Date(newDate.getTime()));
             newDate.setDate(newDate.getDate() + 1);
         }
-        const calendarPromises = [];
         //loop over calendars
+        const calendarPromises = [];
         for (const calendarID of calendars) {
-            calendarPromises.push(new Promise(resolve => {
-                //check if calendar in cache
-                console.log('checking if calendar is in cache');
-                redis.getList(`${calendarID}:dates`).then(dateList => {
-                    // calendar in cache
-                    console.log('calendar is in cache');
-                    const datesNotInCache = [];
-                    for (const date of dates) {
-                        // console.log('checking if date is in cache');
-                        if (dateList.filter(date2 => new Date(date2).getTime() === date.getTime()).length < 1) {
-                            datesNotInCache.push(date);
-                        }
-                    }
-                    redis.getList(`${calendarID}:events`).then(events => {
-                        const allEvents = [];
-                        allEvents.push(...events);
-                        if (datesNotInCache.length > 0) {
-                            getEventsFromAPI(calendarID, datesNotInCache).then(eventList => {
-                                allEvents.push(...eventList);
-                                resolve(allEvents);
-                            }).catch(console.error);
-                        }
-                        else resolve(allEvents);
-                    });
-                }).catch(cause => {
-                    // calendar not in cache
+            calendarPromises.push(new Promise((resolve, reject) => {
+                //loop over dates
+                const datePromises = [];
+                for (const date of dates) {
+                    datePromises.push(redis.getList(`${calendarID}:${date.toDateString()}`))
+                }
+                Promise.all(datePromises).then((events) => {
+                    console.log('found calendar in cache');
+                    const allEvents = [];
+                    events.map(eventList => eventList.map(event => allEvents.push(JSON.parse(event))));
+                    resolve(allEvents);
+                }).catch(reason => {
+                    if (reason != 'KEY_NOT_FOUND') reject(reason);
                     console.log('calendar not in cache, getting events from API');
-                    // get events from API
-                    // store events in cache
-                    getEventsFromAPI(calendarID, dates).then(resolve).catch(console.error);
+                    getEventsFromAPI(calendarID, startDate, endDate).then(resolve);
                 });
             }));
         }
         Promise.all(calendarPromises).then((events) => {
             const allEvents = [];
             events.map(eventList => allEvents.push(...eventList));
-            resolve(allEvents);
-        });
+            //remove duplicate events (multiple day events)
+            const eventIDs = [];
+            const distinctEvents = [];
+            allEvents.map(event => {
+                if (eventIDs.indexOf(event.event_uid) === -1) {
+                    eventIDs.push(event.event_uid);
+                    distinctEvents.push(event);
+                }
+            });
+            
+            resolve(distinctEvents);
+        }).catch(reject);
     });
 }
 
-function getEventsFromAPI(calendarID, dates) {
+function getEventsFromAPI(calendarID, startDate, endDate) {
     return new Promise(resolve => {
         //get events from external API
         google.listEvents(calendarID, new Date(startDate), new Date(endDate)).then(events => {
-            //store list of dates in cache
-            redis.storeList(`${calendarID}:dates`, dates);
-            //store list of eventIDs
-            const eventIDs = [];
-            events.map(event => eventIDs.push(event.event_uid));
-            redis.storeList(`${calendarID}:events`, eventIDs);
-            //store events in cache
-            redis.storeEvents(events);
+            //store list of events
+            const eventsMap = new Map();
+            const date = new Date(startDate.getTime());
+            do {
+                eventsMap.set(date.toDateString(), []);
+                date.setDate(date.getDate() + 1);
+            } while (date.getTime() <= endDate.getTime());
+            events.map(event => {
+                const endDate = getStartOfDate(event.end);
+                const eventDate = getStartOfDate(event.start);
+                do {
+                    eventsMap.get(eventDate.toDateString()).push(JSON.stringify(event));
+                    eventDate.setDate(eventDate.getDate() + 1);
+                } while (eventDate.getTime() <= endDate.getTime());
+            });
+            for (let [key, value] of eventsMap) {
+                redis.storeList(`${calendarID}:${key}`, value);
+            }
             resolve(events);
         });
     });
@@ -121,7 +129,7 @@ function createEvent(calendarID, summary, startTime, endTime) {
 
 function deleteEvent(calendarID, eventID) {
     redis.deleteEvent(calendarID, eventID);
-    google.deleteEvent(calendarID, eventID);    
+    google.deleteEvent(calendarID, eventID);
 }
 
 function updateEvent(calendarID, event) {

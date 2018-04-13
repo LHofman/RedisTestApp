@@ -4,6 +4,14 @@ module.exports.getAllKeys = function() {
 	return redis.getAllKeys();
 }
 
+module.exports.getValue = function(key) {
+	return redis.get(key);
+}
+
+module.exports.callLuaScript = function() {
+	redis.callLuaScript();
+}
+
 module.exports.clearKeys = function() {
 	redis.getAllKeys().then(keys => {
 		console.log('Deleting keys...');
@@ -15,11 +23,17 @@ module.exports.clearKeys = function() {
 }
 
 module.exports.getList = function(key) {
-	return redis.getList(key);
+	return new Promise((resolve, reject) => {
+		redis.getList(key).then(list => {
+			if (list.length === 1 && list[0] === '0') resolve([]);
+			else resolve(list);
+		}).catch(reject);
+	});
 }
 
 module.exports.storeList = function(key, list) {
-	return redis.setListEx(key, list);
+	// return redis.setListEx(key, getNonEmptyList(list));
+	return redis.runScript('src/redis/setListEx.lua', 2, key, 120, ...getNonEmptyList(list));
 }
 
 module.exports.storeEvents = function(events) {
