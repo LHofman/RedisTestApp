@@ -1,4 +1,6 @@
 const express = require('express');
+const dateformat = require('dateformat');
+
 const redis = require('./redis');
 const google = require('./providers/google');
 const { getStartOfDate } = require('./util');
@@ -7,7 +9,7 @@ const calendarID = '4ln5p1mg4t32icgrrphbodi1ho@group.calendar.google.com';
 // 4ln5p1mg4t32icgrrphbodi1ho@group.calendar.google.com
 // 4ueu53ere2jrp4dtkqicfqutdo
 const startDate = new Date(2018, 0, 1);
-const endDate = new Date(2018, 2, 1);
+const endDate = new Date(2018, 0, 6);
 
 const summary = 'TestEvent';
 const startTime = new Date(2018, 2, 1, 17);
@@ -27,13 +29,14 @@ const event = {
 // redis.getList('4ln5p1mg4t32icgrrphbodi1ho@group.calendar.google.com:Thu Mar 01 2018').then(console.log);
 // getCalendars().then(console.log);
 // createMultipleEvents(calendarID, summary, startTime, endTime, 1).then(events => displayEvents([events]));
-getEventsBetweenDates([calendarID], startDate, endDate).then(displayEventsShort).catch(console.error);
+getEventsBetweenDates([calendarID], startDate, endDate).then(displayEventsShort).then(() => printNow()).catch(console.error);
 // deleteEvent(calendarID, eventID);
 // updateEvent(calendarID, event); //doesn't work
 // redis.callLuaScript();
 // getEventsFromAPI(calendarID, startDate, endDate);
 
 function getEventsBetweenDates(calendars, startDate, endDate = startDate) {
+    printNow();
     return new Promise((resolve, reject) => {
         if (!startDate) reject('No dates entered');
         const dates = []
@@ -163,3 +166,9 @@ function displayEvents(events) {
 function displayEventsShort(events) {
     console.log(`found ${events.length} events`);
 }
+
+function printNow() {
+    const now = new Date();
+    console.log(dateformat(now, `HH:m:ss:${now.getMilliseconds()}`));
+  }
+  
